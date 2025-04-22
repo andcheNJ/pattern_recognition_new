@@ -132,27 +132,53 @@ class SiameseDataset(Dataset):
             # For simplicity here, we raise it again, but you might want robust error handling
             raise e
 
+
+
 class SimpleImageDataset(Dataset):
-        def __init__(self, dataset_path, transform=None):
-            self.dataset_path = dataset_path
-            self.transform = transform
-            self.image_paths = []
-            classes = sorted([d.name for d in os.scandir(dataset_path) if d.is_dir()])
-            for class_name in classes:
-                class_path = os.path.join(dataset_path, class_name)
-                if not os.path.isdir(class_path): continue
-                for img_name in sorted(os.listdir(class_path)):
-                    img_path = os.path.join(class_path, img_name)
-                    if os.path.isfile(img_path) and img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
-                        self.image_paths.append(img_path)
-        def __len__(self):
-            return len(self.image_paths)
-        def __getitem__(self, index):
+    def __init__(self, dataset_path, transform=None):
+        self.dataset_path = dataset_path
+        self.transform = transform
+        self.image_paths = []
+        self.labels = [] # <--- ADD LABELS LIST
+
+        # --- ADD class discovery and mapping ---
+        self.classes = sorted([d.name for d in os.scandir(dataset_path) if d.is_dir()])
+        if not self.classes:
+            raise ValueError(f"No class subdirectories found in {dataset_path} for SimpleImageDataset")
+        self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(self.classes)}
+        # ----------------------------------------
+
+        for class_name in self.classes:
+            class_idx = self.class_to_idx[class_name] # <--- Get class index
+            class_path = os.path.join(dataset_path, class_name)
+            if not os.path.isdir(class_path): continue
+            for img_name in sorted(os.listdir(class_path)):
+                img_path = os.path.join(class_path, img_name)
+                if os.path.isfile(img_path) and img_name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
+                    self.image_paths.append(img_path)
+                    self.labels.append(class_idx) # <--- STORE THE LABEL
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, index):
+        try:
             img_path = self.image_paths[index]
+            label = self.labels[index] # <--- GET THE LABEL
             img = Image.open(img_path).convert('L')
             if self.transform:
                 img = self.transform(img)
-            return img # Return only the image
+            # Return both image and label
+            return img, torch.tensor(label, dtype=torch.long) # <--- RETURN IMG AND LABEL (use long tensor for labels)
+        except Exception as e:
+             print(f"Error loading image {img_path} or label for SimpleImageDataset: {e}")
+             # Handle error appropriately, maybe return None and filter in DataLoader?
+             # For now, re-raise
+             raise e
+
+# --- calculate_mean_std function remains the same (it uses SimpleImageDataset correctly) ---
+
+# --- visualize_embeddings function remains the same (it expects (img, label) which it will now get) ---
 
 # --- calculate_mean_std remains the same, but uses the ORIGINAL __getitem__ ---
 # Temporarily modify or create a separate dataset class for calculation if needed,
